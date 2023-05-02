@@ -32,8 +32,8 @@ endif()
 
 add_link_options("-fuse-ld=lld")
 
-# -fsanitize=thread
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -fconcepts-diagnostics-depth=3  -latomic")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -latomic")
+# set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -fsanitize=thread -latomic")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 

@@ -2,21 +2,45 @@
 
 
 namespace lf {
+namespace {
+template <Comparable DataT>
+inline auto toMarkedRef(NodeRef<DataT> ref) {
+    return NodeRef<DataT>{ref.GetNode(), true};
+}
+
+template <Comparable DataT>
+inline auto toMarkedRef(Node<DataT> *node) {
+    return NodeRef<DataT>{node, true};
+}
+
+template <Comparable DataT>
+inline auto toUnmarkedRef(NodeRef<DataT> ref) {
+    return NodeRef<DataT>{ref.GetNode(), false};
+}
+
+template <Comparable DataT>
+inline auto toUnmarkedRef(Node<DataT> *node) {
+    return NodeRef<DataT>{node, false};
+}
+}   // anonymous namespace
+
+
 template <Comparable DataT>
 bool LFList<DataT>::Insert(const DataT &data) {
-    auto *node = new Node<DataT>(data, nullptr);
-    NodeRef<DataT> nodeRef{node};
+    auto *node = allocate(data, nullptr);
 
     while (true) {
         auto [pred, curr] = search(data);
-        if (curr->data == data) {
-            delete node;
+        if (curr != getSentinel() && curr->data == data) {
+            // key already present
+            memResource->deallocate(node, sizeof(NodeT));
             return false;
         }
 
-        node->next.store(curr);
-        if (pred->next.compare_exchange_weak(curr, nodeRef)) {
-            size.fetch_add(1, std::memory_order_relaxed);
+        ASSERT(curr.GetNode() && !curr.IsMarked());
+        node->next.store(curr, std::memory_order_release);
+        if (pred->next.compare_exchange_strong(curr, toUnmarkedRef(node))) {
+            size.fetch_add(1, std::memory_order_acq_rel);
             return true;
         }
     }
@@ -28,19 +52,20 @@ template <Comparable DataT>
 bool LFList<DataT>::Remove(const DataT &data) {
     while (true) {
         auto [pred, curr] = search(data);
-        if (curr->data != data) {
+        if (curr == getSentinel() || curr->data != data) {
             return false;
         }
 
-        auto next = curr->next.load();
-        NodeRef<DataT> marked{next.GetNode(), true};
-        if (!curr->next.compare_exchange_weak(next, marked)) {
+        auto next = curr->next.load(std::memory_order_acquire);
+        // try to mark curr for removal
+        if (next.IsMarked() || !curr->next.compare_exchange_strong(next, toMarkedRef(next))) {
             continue;
         }
-        // either this or another thread will update
-        if (pred->next.compare_exchange_strong(curr, next)) {
-            size.fetch_sub(1, std::memory_order_relaxed);
+        // either this or another thread will actually remove
+        if (!pred->next.compare_exchange_strong(curr, NodeRef<DataT>{next.GetNode(), curr.IsMarked()})) {
+            search(curr->data);
         }
+        size.fetch_sub(1, std::memory_order_acq_rel);
         return true;
     }
     UNREACHABLE();
@@ -49,51 +74,54 @@ bool LFList<DataT>::Remove(const DataT &data) {
 
 template <Comparable DataT>
 bool LFList<DataT>::Contains(const DataT &data) {
-    auto *curr = head.load().GetNode();
-    while (curr && curr->data < data) {
-        curr = curr->next.load().GetNode();
-    }
-    return curr != nullptr && curr->data == data && !curr->next.load().IsMarked();
+    auto [pred, curr] = search(data);
+    return (curr != getSentinel()) && (curr->data == data);
 }
 
 template <Comparable DataT>
 std::pair<NodeRef<DataT>, NodeRef<DataT>> LFList<DataT>::search(const DataT &key) {
-    while (true) {
-        auto pred = head.load();
-        auto curr = pred->next.load();
-        if (searchImpl(pred, curr, key)) {
-            return {pred, curr};
-        }
-    }
-    UNREACHABLE();
-    return {NodeRef<DataT>{nullptr}, NodeRef<DataT>{nullptr}};
-}
+    const auto *sentinel = getSentinel();
+    NodeRef<DataT> left{nullptr};
+    NodeRef<DataT> leftNext{nullptr};
+    NodeRef<DataT> right{nullptr};
 
-template <Comparable DataT>
-bool LFList<DataT>::searchImpl(NodeRef<DataT> &pred, NodeRef<DataT> &curr, const DataT &key) {
     while (true) {
-        auto next = curr->next.load();
-        if (next == tail) {
-            return true;
-        }
+        auto pred = head.load(std::memory_order_acquire);
+        auto curr = pred->next.load(std::memory_order_acquire);
+        ASSERT(!curr.IsMarked());
 
-        // delete marked nodes
-        while (next.IsMarked()) {
-            if (!pred->next.compare_exchange_weak(curr, next)) {
-                return false;
+        do {
+            if (!curr.IsMarked()) {
+                left = pred;
+                leftNext = curr;
             }
-            curr = next;
-            next = curr->next.load();
+
+            pred = toUnmarkedRef(curr);
+            if (pred == sentinel) {
+                break;
+            }
+            curr = pred->next.load(std::memory_order_acquire);
+        } while (curr.IsMarked() || pred->data < key);
+        right = pred;
+
+        if (leftNext == right) {
+            if (right != sentinel && right->next.load(std::memory_order_acquire).IsMarked()) {
+                continue;
+            }
+            return {left, right};
         }
 
-        if (curr->data >= key) {
-            return true;
+        ASSERT(left.GetNode());
+        // remove marked nodes
+        if (left->next.compare_exchange_strong(leftNext, toUnmarkedRef(right))) {
+            if (right != sentinel && right->next.load(std::memory_order_acquire).IsMarked()) {
+                continue;
+            }
+            return {left, right};
         }
-        pred = curr;
-        curr = next;
     }
     UNREACHABLE();
-    return false;
+    return {left, right};
 }
 
 template class LFList<int>;

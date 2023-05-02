@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include "macros.h"
+#include <memory_resource>
 #include <type_traits>
 
 
@@ -21,8 +22,8 @@ struct Node;
 template <Comparable DataT>
 class NodeRef final {
 public:
-    explicit NodeRef(Node<DataT> *node) : ref(node) {}
-    NodeRef(Node<DataT> *node, bool m) : ref(node), marked(m) {}
+    explicit NodeRef(Node<DataT> *node, bool m = false) : ref(node), marked{static_cast<char>(m)} {}
+
     NodeRef() = delete;
     DEFAULT_COPY_SEMANTIC(NodeRef);
     DEFAULT_MOVE_SEMANTIC(NodeRef);
@@ -43,22 +44,21 @@ public:
     }
 
     bool IsMarked() const {
-        return marked;
-    }
-    void SetMarked() {
-        marked = true;
+        return marked[0] > 0;
     }
 
     constexpr bool operator==(const Node<DataT> *node) const {
         return ref == node;
     }
-    constexpr bool operator==(const NodeRef<DataT> other) const {
-        return ref == other.ref && marked == other.marked;
+    constexpr bool operator==(const NodeRef<DataT> &other) const {
+        return ref == other.ref && marked[0] == other.marked[0];
     }
 
 private:
-    Node<DataT> *ref = nullptr;
-    bool marked = false;
+    static constexpr size_t WORD_SIZE = sizeof(int *);
+
+    Node<DataT> *ref;
+    char marked[WORD_SIZE];
 };
 
 // based on
@@ -82,26 +82,48 @@ class LFList {
 public:
     using NodeT = Node<DataT>;
 
-    LFList()
-        : tail(NodeRef<DataT>{new NodeT{DataT(), nullptr}}),
-          head(NodeRef<DataT>{new NodeT{DataT(), tail.load().GetNode()}})
+    explicit LFList(std::pmr::memory_resource *mem)
+        : memResource(mem),
+          tail(NodeRef<DataT>{allocate(mem, DataT(), nullptr)}),
+          head(NodeRef<DataT>{allocate(mem, DataT(), tail.load(std::memory_order_relaxed).GetNode())}),
+          size(0)
     {}
     DEFAULT_COPY_SEMANTIC(LFList);
     DEFAULT_MOVE_SEMANTIC(LFList);
-    DEFAULT_DTOR(LFList);
+    ~LFList() noexcept {
+        memResource->deallocate(tail.load(std::memory_order_relaxed).GetNode(), sizeof(NodeT));
+        memResource->deallocate(head.load(std::memory_order_relaxed).GetNode(), sizeof(NodeT));
+    }
 
     bool Insert(const DataT &data);
     bool Remove(const DataT &data);
     bool Contains(const DataT &data);
     unsigned int Size() const {
-        return size.load(std::memory_order_relaxed);
+        return size.load(std::memory_order_acquire);
     }
 
 private:
     std::pair<NodeRef<DataT>, NodeRef<DataT>> search(const DataT &key);
-    bool searchImpl(NodeRef<DataT> &pred, NodeRef<DataT> &curr, const DataT &key);
+
+    const NodeT *getSentinel() const {
+        return tail.load(std::memory_order_relaxed).GetNode();
+    }
+
+    static NodeT *allocate(std::pmr::memory_resource *memResource, const DataT &data, NodeT *next) {
+        ASSERT(memResource);
+        auto allocator = std::pmr::polymorphic_allocator(memResource);
+        auto *mem = allocator.template allocate_object<NodeT>();
+        ASSERT(mem);
+        allocator.construct(mem, data, next);
+        return mem;
+    }
+    NodeT *allocate(const DataT &data, NodeT *next) {
+        return allocate(memResource, data, next);
+    }
 
 private:
+    std::pmr::memory_resource *memResource;
+
     std::atomic<NodeRef<DataT>> tail;
     std::atomic<NodeRef<DataT>> head;
     std::atomic_uint32_t size;

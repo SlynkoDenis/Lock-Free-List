@@ -2,24 +2,31 @@
 #define JIT_AOT_COMPILERS_COURSE_DEBUG_H_
 
 #include <iostream>
+#include <sstream>
 
 
 namespace utils {
 inline void AssertionFail(const char *expr, const char *file, unsigned line, const char *function) {
-    std::cerr << "ASSERTION FAILED: " << expr << std::endl;
-    std::cerr << "IN " << file << ":" << std::dec << line << ":" << function << std::endl;
+    std::stringstream oss;
+    oss << "ASSERTION FAILED: " << expr << '\n';
+    oss << "IN " << file << ":" << std::dec << line << ":" << function;
+    std::cerr << oss.str() << std::endl;
     std::terminate();
 }
 
 inline void AssertionFail(const char *file, unsigned line, const char *function) {
-    std::cerr << "ASSERTION FAILED" << std::endl;
-    std::cerr << "IN " << file << ":" << std::dec << line << ":" << function << std::endl;
+    std::stringstream oss;
+    oss << "ASSERTION FAILED" << '\n';
+    oss << "IN " << file << ":" << std::dec << line << ":" << function;
+    std::cerr << oss.str() << std::endl;
     std::terminate();
 }
 
 inline void PrintWarning(const char *mess, const char *file, unsigned line, const char *function) {
-    std::cerr << "WARNING: " << mess << std::endl;
-    std::cerr << "IN " << file << ":" << std::dec << line << ":" << function << std::endl;
+    std::stringstream oss;
+    oss << "WARNING: " << mess << '\n';
+    oss << "IN " << file << ":" << std::dec << line << ":" << function << std::endl;
+    std::cerr << oss.str() << std::endl;
 }
 
 inline void AssertionFail(std::string expr, const char *file, unsigned line, const char *function) {
