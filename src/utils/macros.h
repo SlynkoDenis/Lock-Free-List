@@ -1,5 +1,5 @@
-#ifndef JIT_AOT_COMPILERS_COURSE_MACROS_H_
-#define JIT_AOT_COMPILERS_COURSE_MACROS_H_
+#ifndef LOCK_FREE_LIST_MACROS_H_
+#define LOCK_FREE_LIST_MACROS_H_
 
 #include "debug.h"
 
@@ -8,20 +8,24 @@
 
 #ifndef NDEBUG
 
-#define ASSERT_FAIL(expr) utils::AssertionFail((expr), __FILE__, __LINE__, __FUNCTION__)
+#define ASSERT_FAIL(expr) ::utils::AssertionFail((expr), __FILE__, __LINE__, __FUNCTION__)
 #define ASSERT(expr)            \
     if (UNLIKELY(!(expr))) {    \
         ASSERT_FAIL(#expr);     \
     }
 
+#define EXEC_ON_DEBUG(expr) (expr)
+
 #else
 
 #define ASSERT(expr) static_cast<void>(0)
 
+#define EXEC_ON_DEBUG(expr) static_cast<void>(0)
+
 #endif  // NDEBUG
 
-#define WARNING(mess) utils::PrintWarning((mess), __FILE__, __LINE__, __FUNCTION__)
-#define UNREACHABLE(...) utils::AssertionFail(__VA_OPT__(mess,) __FILE__, __LINE__, __FUNCTION__)
+#define WARNING(mess) ::utils::PrintWarning((mess), __FILE__, __LINE__, __FUNCTION__)
+#define UNREACHABLE(...) ::utils::AssertionFail(__VA_OPT__(mess,) __FILE__, __LINE__, __FUNCTION__)
 
 
 #define DEFAULT_DTOR(TypeName) \
@@ -68,14 +72,4 @@
     NO_MOVE_OPERATOR(TypeName)
 
 
-#define NO_NEW_DELETE                                                                                   \
-    void operator delete([[maybe_unused]] void *unused1, [[maybe_unused]] void *unused2) noexcept {}    \
-    void *operator new([[maybe_unused]] size_t size) = delete;                                          \
-    void operator delete([[maybe_unused]] void *unused, [[maybe_unused]] size_t size) {                 \
-        UNREACHABLE("");                                                                                \
-    }                                                                                                   \
-    void *operator new([[maybe_unused]] size_t size, void *ptr) noexcept {                              \
-        return ptr;                                                                                     \
-    }
-
-#endif // JIT_AOT_COMPILERS_COURSE_MACROS_H_
+#endif // LOCK_FREE_LIST_MACROS_H_

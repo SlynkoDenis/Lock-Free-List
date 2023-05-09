@@ -3,25 +3,14 @@ project(LF_LIST)
 
 set(CMAKE_CXX_STANDARD 20)
 
-function(add_git_submodule dir)
-    # add a Git submodule directory to CMake, assuming the
-    # Git submodule directory is a CMake project.
-    #
-    # Usage: in CMakeLists.txt
-    #
-    # include(AddGitSubmodule.cmake)
-    # add_git_submodule(mysubmod_dir)
+include(cmake/AddGitSubmodule.cmake)
 
-    find_package(Git REQUIRED)
-
-    if(NOT EXISTS ${dir}/CMakeLists.txt)
-        execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive -- ${dir}
-                WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
-    endif()
-
-    add_subdirectory(${dir})
-
-endfunction(add_git_submodule)
+if(NOT SPOT_LIB_PATH OR NOT SPOT_LIB_PATH MATCHES ".libspot\.a")
+    message(FATAL_ERROR "Variable SPOT_LIB_PATH must point to libspot.a")
+endif()
+if(NOT BUDDY_LIB_PATH OR NOT BUDDY_LIB_PATH MATCHES ".libbddx\.a")
+    message(FATAL_ERROR "Variable BUDDY_LIB_PATH must point to libbddx.a")
+endif()
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
@@ -39,12 +28,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-add_executable(list main.cpp)
 add_subdirectory(src)
 
 if(${CMAKE_BUILD_TYPE} MATCHES "Debug")
     add_git_submodule(third_party/googletest)
     add_subdirectory(tests)
 endif()
-
-target_link_libraries(list PUBLIC lf_list)

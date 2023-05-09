@@ -1,7 +1,9 @@
 #include <algorithm>
 #include "gtest/gtest.h"
 #include "LFList.h"
+#include "LoggingUtils.h"
 #include <random>
+#include <sstream>
 #include <thread>
 
 
@@ -104,6 +106,13 @@ void LFListTest::Consumer(std::pair<IterType, IterType> &&rng, LFList<int> *lst,
     }
 }
 
+template <int ProdN, int ConsN>
+std::string getLogFileName() {
+    std::stringstream oss;
+    oss << "prod" << ProdN << "cons" << ConsN << ".log";
+    return oss.str();
+}
+
 // This test does the following:
 // - Runs ProdN producers inserting values in random order
 // - Runs ConsN consumers removing the same values in random order
@@ -113,7 +122,9 @@ template <int ProdN, int ConsN>
 void LFListTest::TestProdNConsM() {
     auto data = RandomShuffle(NUMBER_ELEMENTS);
     std::pmr::synchronized_pool_resource memResource;
-    LFList<int> lst(&memResource);
+    auto filename = getLogFileName<ProdN, ConsN>();
+    configureLogger(filename);
+    LFList<int> lst(&memResource, filename);
 
     SetProducersNumber(ProdN);
     std::array<std::thread, ProdN> producers;

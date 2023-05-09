@@ -2,6 +2,7 @@ set(BINARY tests)
 
 set(SOURCES
     LFListTest.cpp
+    LoggingUtils.h
     main.cpp
     )
 

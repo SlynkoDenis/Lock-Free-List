@@ -1,9 +1,14 @@
-#ifndef LF_LIST_H_
-#define LF_LIST_H_
+#ifndef LOCK_FREE_LIST_LF_LIST_H_
+#define LOCK_FREE_LIST_LF_LIST_H_
 
 #include <atomic>
+#include <boost/log/sources/channel_logger.hpp>
+#include <boost/log/sources/logger.hpp>
 #include "macros.h"
 #include <memory_resource>
+#include <spot/parseaut/public.hh>
+#include <spot/twaalgos/hoa.hh>
+#include "StatefulAutomaton.h"
 #include <type_traits>
 
 
@@ -82,11 +87,16 @@ class LFList {
 public:
     using NodeT = Node<DataT>;
 
-    explicit LFList(std::pmr::memory_resource *mem)
+    LFList(std::pmr::memory_resource *mem, std::string channel)
         : memResource(mem),
+          logger(boost::log::keywords::channel = channel),
           tail(NodeRef<DataT>{allocate(mem, DataT(), nullptr)}),
           head(NodeRef<DataT>{allocate(mem, DataT(), tail.load(std::memory_order_relaxed).GetNode())}),
           size(0)
+#ifndef NDEBUG
+          , insertAutomaton(ParseAutomaton(INSERT_AUTOMATON)),
+          removeAutomaton(ParseAutomaton(REMOVE_AUTOMATON))
+#endif  // NDEBUG
     {}
     DEFAULT_COPY_SEMANTIC(LFList);
     DEFAULT_MOVE_SEMANTIC(LFList);
@@ -122,12 +132,22 @@ private:
     }
 
 private:
+    [[maybe_unused]] static constexpr const char *INSERT_AUTOMATON = "insert.hoa";
+    [[maybe_unused]] static constexpr const char *REMOVE_AUTOMATON = "remove.hoa";
+
+private:
     std::pmr::memory_resource *memResource;
+    boost::log::sources::channel_logger<> logger;
 
     std::atomic<NodeRef<DataT>> tail;
     std::atomic<NodeRef<DataT>> head;
     std::atomic_uint32_t size;
+
+#ifndef NDEBUG
+    const StatefulAutomaton insertAutomaton;
+    const StatefulAutomaton removeAutomaton;
+#endif  // NDEBUG
 };
 }   // namespace lf
 
-#endif  // LF_LIST_H_
+#endif  // LOCK_FREE_LIST_LF_LIST_H_
