@@ -104,6 +104,11 @@ void LFListTest::Consumer(std::pair<IterType, IterType> &&rng, LFList<int> *lst,
     }
 }
 
+// This test does the following:
+// - Runs ProdN producers inserting values in random order
+// - Runs ConsN consumers removing the same values in random order
+// - Checks that values neither lost nor duplicated
+// - In the end list must be empty
 template <int ProdN, int ConsN>
 void LFListTest::TestProdNConsM() {
     auto data = RandomShuffle(NUMBER_ELEMENTS);
